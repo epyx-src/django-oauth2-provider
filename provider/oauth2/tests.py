@@ -415,7 +415,7 @@ class EnforceSecureTest(BaseOAuth2TestCase):
 
 class ClientFormTest(TestCase):
     def test_client_form(self):
-        form = ClientForm({'name': 'TestName', 'url': 'http://127.0.0.1:8000',
+        form = ClientForm({'name': 'TestName',
             'redirect_uri': 'http://localhost:8000/'})
 
         self.assertFalse(form.is_valid())

@@ -29,25 +29,25 @@ class Client(models.Model):
 
     * :attr:`user`
     * :attr:`name`
-    * :attr:`url`
     * :attr:`redirect_url`
     * :attr:`client_id`
     * :attr:`client_secret`
     * :attr:`client_type`
+    * :attr:`client_active`
 
     Clients are outlined in the :rfc:`2` and its subsections.
     """
     user = models.ForeignKey(AUTH_USER_MODEL, related_name='oauth2_client',
         blank=True, null=True)
     name = models.CharField(max_length=255, blank=True)
-    url = models.URLField(help_text="Your application's URL.")
     redirect_uri = models.URLField(help_text="Your application's callback URL")
     client_id = models.CharField(max_length=255, default=short_token)
-    client_secret = models.CharField(max_length=255, default=long_token)
+    client_secret = models.CharField(max_length=255, default=long_token, blank=True)
     client_type = models.IntegerField(choices=CLIENT_TYPES)
+    client_active = models.BooleanField()
 
     def __unicode__(self):
-        return self.redirect_uri
+        return self.name
 
 
 class Grant(models.Model):

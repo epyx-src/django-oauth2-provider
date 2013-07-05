@@ -16,7 +16,7 @@ class ClientForm(forms.ModelForm):
     """
     class Meta:
         model = Client
-        fields = ('name', 'url', 'redirect_uri', 'client_type')
+        fields = ('name', 'redirect_uri', 'client_type')
 
     def save(self, user=None, **kwargs):
         self.instance.user = user
@@ -30,7 +30,7 @@ class ClientAuthForm(forms.Form):
     the client.
     """
     client_id = forms.CharField()
-    client_secret = forms.CharField()
+    client_secret = forms.CharField(required=False)
 
     def clean(self):
         data = self.cleaned_data

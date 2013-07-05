@@ -4,8 +4,7 @@
             "redirect_uri": "http://example.com/application/1/", 
             "client_id": "90a4a24ffefe7ebbae2c", 
             "client_secret": "35c25066023f32c4f098d1e40de94f07f98c1acf", 
-            "client_type": 0, 
-            "url": "http://example.com/", 
+            "client_type": 0,
             "user": 1
         }, 
         "model": "oauth2.client", 
@@ -16,8 +15,7 @@
             "redirect_uri": "http://example.com/application/2/", 
             "client_id": "71fbc29950ac1b386a12", 
             "client_secret": "1944b695ca0cbf4f419a7d5c7e4fed13a660bc04", 
-            "client_type": 0, 
-            "url": "http://example.com/", 
+            "client_type": 0,
             "user": 2
         }, 
         "model": "oauth2.client", 
