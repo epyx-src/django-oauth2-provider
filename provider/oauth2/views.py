@@ -92,7 +92,7 @@ class AccessTokenView(AccessTokenView):
 
     def get_access_token(self, request, user, scope, client):
         try:
-            # Attempt to fetch an existing access token.
+            # Attempt to fetch an existing valid access token.
             at = AccessToken.objects.get(user=user, client=client, scope=scope,
                                          expires__gt=now())
         except AccessToken.DoesNotExist:
