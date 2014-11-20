@@ -55,7 +55,6 @@ class Client(models.Model):
     def serialize(self):
         return dict(user=serialize_instance(self.user),
                     name=self.name,
-                    url=self.url,
                     redirect_uri=self.redirect_uri,
                     client_id=self.client_id,
                     client_secret=self.client_secret,
