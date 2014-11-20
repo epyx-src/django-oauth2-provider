@@ -8,9 +8,8 @@ from django.db import models
 from django.conf import settings
 from .. import constants
 from ..constants import CLIENT_TYPES
-from ..utils import short_token, long_token, get_token_expiry
-from ..utils import get_code_expiry
-from ..utils import now
+from ..utils import now, short_token, long_token, get_code_expiry
+from ..utils import get_token_expiry, serialize_instance, deserialize_instance
 from .managers import AccessTokenManager
 
 try:
@@ -48,6 +47,39 @@ class Client(models.Model):
 
     def __unicode__(self):
         return self.name
+
+    def get_default_token_expiry(self):
+        public = (self.client_type == 1)
+        return get_token_expiry(public)
+
+    def serialize(self):
+        return dict(user=serialize_instance(self.user),
+                    name=self.name,
+                    url=self.url,
+                    redirect_uri=self.redirect_uri,
+                    client_id=self.client_id,
+                    client_secret=self.client_secret,
+                    client_type=self.client_type)
+
+    @classmethod
+    def deserialize(cls, data):
+        if not data:
+            return None
+
+        kwargs = {}
+
+        # extract values that we care about
+        for field in cls._meta.fields:
+            name = field.name
+            val = data.get(field.name, None)
+
+            # handle relations
+            if val and field.rel:
+                val = deserialize_instance(field.rel.to, val)
+
+            kwargs[name] = val
+
+        return cls(**kwargs)
 
 
 class Grant(models.Model):
@@ -98,9 +130,9 @@ class AccessToken(models.Model):
         expiry
     """
     user = models.ForeignKey(AUTH_USER_MODEL)
-    token = models.CharField(max_length=255, default=long_token)
+    token = models.CharField(max_length=255, default=long_token, db_index=True)
     client = models.ForeignKey(Client)
-    expires = models.DateTimeField(default=get_token_expiry)
+    expires = models.DateTimeField()
     scope = models.IntegerField(default=constants.SCOPES[0][0],
             choices=constants.SCOPES)
 
@@ -108,6 +140,11 @@ class AccessToken(models.Model):
 
     def __unicode__(self):
         return self.token
+
+    def save(self, *args, **kwargs):
+        if not self.expires:
+            self.expires = self.client.get_default_token_expiry()
+        super(AccessToken, self).save(*args, **kwargs)
 
     def get_expire_delta(self, reference=None):
         """

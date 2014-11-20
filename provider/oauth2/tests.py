@@ -12,7 +12,7 @@ from ..compat import skipIfCustomUser
 from ..templatetags.scope import scopes
 from ..utils import now as date_now
 from .forms import ClientForm
-from .models import Client, Grant, AccessToken
+from .models import Client, Grant, AccessToken, RefreshToken
 from .backends import BasicClientBackend, RequestParamsClientBackend
 from .backends import AccessTokenBackend
 
@@ -195,6 +195,11 @@ class AuthorizationTest(BaseOAuth2TestCase):
         self.assertTrue('code' in response['Location'])
         self.assertTrue('state=abc' in response['Location'])
 
+    def test_redirect_requires_valid_data(self):
+        self.login()
+        response = self.client.get(self.redirect_url())
+        self.assertEqual(400, response.status_code)
+
 
 class AccessTokenTest(BaseOAuth2TestCase):
     fixtures = ['test_oauth2.json']
@@ -234,6 +239,8 @@ class AccessTokenTest(BaseOAuth2TestCase):
         self.assertEqual('invalid_grant', json.loads(response.content)['error'])
 
     def _login_authorize_get_token(self):
+        required_props = ['access_token', 'token_type']
+
         self.login()
         self._login_and_authorize()
 
@@ -249,7 +256,13 @@ class AccessTokenTest(BaseOAuth2TestCase):
 
         self.assertEqual(200, response.status_code, response.content)
 
-        return json.loads(response.content)
+        token = json.loads(response.content)
+
+        for prop in required_props:
+            self.assertIn(prop, token, "Access token response missing "
+                    "required property: %s" % prop)
+
+        return token
 
     def test_fetching_access_token_with_valid_grant(self):
         self._login_authorize_get_token()
@@ -280,6 +293,23 @@ class AccessTokenTest(BaseOAuth2TestCase):
         result2 = self._login_authorize_get_token()
 
         self.assertEqual(result1['access_token'], result2['access_token'])
+
+        constants.SINGLE_ACCESS_TOKEN = False
+
+    def test_fetching_single_access_token_after_refresh(self):
+        constants.SINGLE_ACCESS_TOKEN = True
+
+        token = self._login_authorize_get_token()
+
+        self.client.post(self.access_token_url(), {
+            'grant_type': 'refresh_token',
+            'refresh_token': token['refresh_token'],
+            'client_id': self.get_client().client_id,
+            'client_secret': self.get_client().client_secret,
+        })
+
+        new_token = self._login_authorize_get_token()
+        self.assertNotEqual(token['access_token'], new_token['access_token'])
 
         constants.SINGLE_ACCESS_TOKEN = False
 
@@ -334,27 +364,89 @@ class AccessTokenTest(BaseOAuth2TestCase):
         self.assertEqual('invalid_grant', json.loads(response.content)['error'],
             response.content)
 
-    def test_password_grant(self):
+    def test_password_grant_public(self):
+        c = self.get_client()
+        c.client_type = 1 # public
+        c.save()
+
         response = self.client.post(self.access_token_url(), {
             'grant_type': 'password',
-            'client_id': self.get_client().client_id,
-            'client_secret': self.get_client().client_secret,
+            'client_id': c.client_id,
+            # No secret needed
             'username': self.get_user().username,
             'password': self.get_password(),
         })
 
         self.assertEqual(200, response.status_code, response.content)
+        self.assertNotIn('refresh_token', json.loads(response.content))
+        expires_in = json.loads(response.content)['expires_in']
+        expires_in_days = round(expires_in / (60.0 * 60.0 * 24.0))
+        self.assertEqual(expires_in_days, constants.EXPIRE_DELTA_PUBLIC.days)
+
+    def test_password_grant_confidential(self):
+        c = self.get_client()
+        c.client_type = 0 # confidential
+        c.save()
 
         response = self.client.post(self.access_token_url(), {
             'grant_type': 'password',
-            'client_id': self.get_client().client_id,
-            'client_secret': self.get_client().client_secret,
+            'client_id': c.client_id,
+            'client_secret': c.client_secret,
+            'username': self.get_user().username,
+            'password': self.get_password(),
+        })
+
+        self.assertEqual(200, response.status_code, response.content)
+        self.assertTrue(json.loads(response.content)['refresh_token'])
+
+    def test_password_grant_confidential_no_secret(self):
+        c = self.get_client()
+        c.client_type = 0 # confidential
+        c.save()
+
+        response = self.client.post(self.access_token_url(), {
+            'grant_type': 'password',
+            'client_id': c.client_id,
+            'username': self.get_user().username,
+            'password': self.get_password(),
+        })
+
+        self.assertEqual('invalid_client', json.loads(response.content)['error'])
+
+    def test_password_grant_invalid_password_public(self):
+        c = self.get_client()
+        c.client_type = 1 # public
+        c.save()
+
+        response = self.client.post(self.access_token_url(), {
+            'grant_type': 'password',
+            'client_id': c.client_id,
+            'username': self.get_user().username,
+            'password': self.get_password() + 'invalid',
+        })
+
+        self.assertEqual(400, response.status_code, response.content)
+        self.assertEqual('invalid_client', json.loads(response.content)['error'])
+
+    def test_password_grant_invalid_password_confidential(self):
+        c = self.get_client()
+        c.client_type = 0 # confidential
+        c.save()
+
+        response = self.client.post(self.access_token_url(), {
+            'grant_type': 'password',
+            'client_id': c.client_id,
+            'client_secret': c.client_secret,
             'username': self.get_user().username,
             'password': self.get_password() + 'invalid',
         })
 
         self.assertEqual(400, response.status_code, response.content)
         self.assertEqual('invalid_grant', json.loads(response.content)['error'])
+
+    def test_access_token_response_valid_token_type(self):
+        token = self._login_authorize_get_token()
+        self.assertEqual(token['token_type'], constants.TOKEN_TYPE, token)
 
 
 class AuthBackendTest(BaseOAuth2TestCase):
@@ -461,3 +553,71 @@ class ScopeTest(TestCase):
         names.sort()
 
         self.assertEqual('read read+write write', ' '.join(names))
+
+
+class DeleteExpiredTest(BaseOAuth2TestCase):
+    fixtures = ['test_oauth2']
+
+    def setUp(self):
+        self._delete_expired = constants.DELETE_EXPIRED
+        constants.DELETE_EXPIRED = True
+
+    def tearDown(self):
+        constants.DELETE_EXPIRED = self._delete_expired
+
+    def test_clear_expired(self):
+        self.login()
+
+        self._login_and_authorize()
+
+        response = self.client.get(self.redirect_url())
+
+        self.assertEqual(302, response.status_code)
+        location = response['Location']
+        self.assertFalse('error' in location)
+        self.assertTrue('code' in location)
+
+        # verify that Grant with code exists
+        code = urlparse.parse_qs(location)['code'][0]
+        self.assertTrue(Grant.objects.filter(code=code).exists())
+
+        # use the code/grant
+        response = self.client.post(self.access_token_url(), {
+            'grant_type': 'authorization_code',
+            'client_id': self.get_client().client_id,
+            'client_secret': self.get_client().client_secret,
+            'code': code})
+        self.assertEquals(200, response.status_code)
+        token = json.loads(response.content)
+        self.assertTrue('access_token' in token)
+        access_token = token['access_token']
+        self.assertTrue('refresh_token' in token)
+        refresh_token = token['refresh_token']
+
+        # make sure the grant is gone
+        self.assertFalse(Grant.objects.filter(code=code).exists())
+        # and verify that the AccessToken and RefreshToken exist
+        self.assertTrue(AccessToken.objects.filter(token=access_token)
+                        .exists())
+        self.assertTrue(RefreshToken.objects.filter(token=refresh_token)
+                        .exists())
+
+        # refresh the token
+        response = self.client.post(self.access_token_url(), {
+            'grant_type': 'refresh_token',
+            'refresh_token': token['refresh_token'],
+            'client_id': self.get_client().client_id,
+            'client_secret': self.get_client().client_secret,
+        })
+        self.assertEqual(200, response.status_code)
+        token = json.loads(response.content)
+        self.assertTrue('access_token' in token)
+        self.assertNotEquals(access_token, token['access_token'])
+        self.assertTrue('refresh_token' in token)
+        self.assertNotEquals(refresh_token, token['refresh_token'])
+
+        # make sure the orig AccessToken and RefreshToken are gone
+        self.assertFalse(AccessToken.objects.filter(token=access_token)
+                         .exists())
+        self.assertFalse(RefreshToken.objects.filter(token=refresh_token)
+                         .exists())

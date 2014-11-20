@@ -1,2 +1,2 @@
-__version__ = "0.2.6.epyx.4"
+__version__ = "0.2.7.epyx.5"
 

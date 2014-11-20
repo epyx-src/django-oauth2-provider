@@ -56,8 +56,13 @@ class ScopeChoiceField(forms.ChoiceField):
         if not value:
             return []
 
+        # New in Django 1.6: value may come in as a string.
+        # Instead of raising an `OAuthValidationError`, try to parse and
+        # ultimately return an empty list if nothing remains -- this will
+        # eventually raise an `OAuthValidationError` in `validate` where
+        # it should be anyways.
         if not isinstance(value, (list, tuple)):
-            raise OAuthValidationError({'error': 'invalid_request'})
+            value = value.split(' ')
 
         # Split values into list
         return u' '.join([smart_unicode(val) for val in value]).split(u' ')
@@ -300,4 +305,31 @@ class PasswordGrantForm(ScopeMixin, OAuthForm):
             raise OAuthValidationError({'error': 'invalid_grant'})
 
         data['user'] = user
+        return data
+
+
+class PublicPasswordGrantForm(PasswordGrantForm):
+    client_id = forms.CharField(required=True)
+    grant_type = forms.CharField(required=True)
+
+    def clean_grant_type(self):
+        grant_type = self.cleaned_data.get('grant_type')
+
+        if grant_type != 'password':
+            raise OAuthValidationError({'error': 'invalid_grant'})
+
+        return grant_type
+
+    def clean(self):
+        data = super(PublicPasswordGrantForm, self).clean()
+
+        try:
+            client = Client.objects.get(client_id=data.get('client_id'))
+        except Client.DoesNotExist:
+            raise OAuthValidationError({'error': 'invalid_client'})
+
+        if client.client_type != 1: # public
+            raise OAuthValidationError({'error': 'invalid_client'})
+
+        data['client'] = client
         return data
