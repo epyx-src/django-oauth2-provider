@@ -56,11 +56,7 @@ def check(wants, has):
         True
 
     """
-    if wants & has == 0:
-        return False
-    if wants & has < wants:
-        return False
-    return True
+    return wants & has == wants
 
 
 def to_names(scope):
@@ -100,5 +96,14 @@ def to_int(*names, **kwargs):
 
     """
 
-    return reduce(lambda prev, next: (prev | SCOPE_NAME_DICT.get(next, 0)),
-            names, kwargs.pop('default', 0))
+    found = False
+    int_value = 0
+    for name in names:
+        if SCOPE_NAME_DICT.has_key(name):
+            found = True
+        int_value |= SCOPE_NAME_DICT.get(name, 0)
+
+    if found:
+        return int_value
+    else:
+        return kwargs.pop('default', 0)

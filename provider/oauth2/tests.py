@@ -522,28 +522,32 @@ class ClientFormTest(TestCase):
 
 
 class ScopeTest(TestCase):
-    def setUp(self):
-        self._scopes = constants.SCOPES
-        constants.SCOPES = constants.DEFAULT_SCOPES
 
-    def tearDown(self):
-        constants.SCOPES = self._scopes
+    def test_scope_to_names(self):
+        self.assertEqual('read', ' '.join(scope.to_names(constants.READ)))
+        self.assertEqual('write', ' '.join(scope.to_names(constants.WRITE)))
+        self.assertEqual('read write read+write', ' '.join(scope.to_names(constants.READ_WRITE)))
 
-    def test_get_scope_names(self):
-        names = scope.to_names(constants.READ)
-        self.assertEqual('read', ' '.join(names))
+        self.assertEqual('read', ' '.join(scope.names(constants.READ)))
+        self.assertEqual('write', ' '.join(scope.names(constants.WRITE)))
+        self.assertEqual('read write read+write', ' '.join(scope.names(constants.READ_WRITE)))
 
-        names = scope.names(constants.READ_WRITE)
-        names.sort()
-
-        self.assertEqual('read read+write write', ' '.join(names))
-
-    def test_get_scope_ints(self):
+    def test_scope_to_ints(self):
         self.assertEqual(constants.READ, scope.to_int('read'))
         self.assertEqual(constants.WRITE, scope.to_int('write'))
+        self.assertEqual(constants.READ_WRITE, scope.to_int('read+write'))
         self.assertEqual(constants.READ_WRITE, scope.to_int('read', 'write'))
+
+        self.assertEqual(constants.READ, scope.to_int('read', default=0))
+        self.assertEqual(constants.WRITE, scope.to_int('write', default=constants.READ))
+        self.assertEqual(constants.READ_WRITE, scope.to_int('read+write', default=constants.READ))
+        self.assertEqual(constants.READ_WRITE, scope.to_int('read', 'write', default=constants.READ))
+
         self.assertEqual(0, scope.to_int('invalid'))
-        self.assertEqual(1, scope.to_int('invalid', default=1))
+        self.assertEqual(0, scope.to_int('invalid', default=0))
+        self.assertEqual(constants.READ, scope.to_int('invalid', default=constants.READ))
+        self.assertEqual(constants.WRITE, scope.to_int('invalid', 'write'))
+        self.assertEqual(constants.WRITE, scope.to_int('write', 'invalid', default=constants.READ))
 
     def test_template_filter(self):
         names = scopes(constants.READ)
