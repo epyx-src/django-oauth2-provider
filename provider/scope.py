@@ -99,7 +99,7 @@ def to_int(*names, **kwargs):
     found = False
     int_value = 0
     for name in names:
-        if SCOPE_NAME_DICT.has_key(name):
+        if name in SCOPE_NAME_DICT:
             found = True
         int_value |= SCOPE_NAME_DICT.get(name, 0)
 
