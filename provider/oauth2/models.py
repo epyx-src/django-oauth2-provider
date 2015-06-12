@@ -43,7 +43,7 @@ class Client(models.Model):
     client_id = models.CharField(max_length=255, default=short_token)
     client_secret = models.CharField(max_length=255, default=long_token, blank=True)
     client_type = models.IntegerField(choices=CLIENT_TYPES)
-    client_active = models.BooleanField()
+    client_active = models.BooleanField(default=False)
 
     def __unicode__(self):
         return self.name
